@@ -7,70 +7,68 @@ def main():
     conn = psycopg2.connect(**config)
     cur = conn.cursor()
 
-    # we get all the embeddings and sentences because we need to compare the 10 selected with every other embedding and calculate the distance
-    cur.execute(""" SELECT s.id, s.text, e.embedding
-       FROM bookcorpus s
-       JOIN sentence_embeddings e ON s.id = e.sid
-       ORDER BY s.id;"""
-    )
-
+    # obtener todas las oraciones con sus embeddings
+    cur.execute("""
+        SELECT s.id, s.text, e.embedding
+        FROM bookcorpus s
+        JOIN sentence_embeddings e ON s.id = e.sid
+        ORDER BY s.id;
+    """)
     rows = cur.fetchall()
     cur.close()
     conn.close()
 
     ids = [row[0] for row in rows]
     texts = [row[1] for row in rows]
-    vecs = [row[2] for row in rows]
+    vecs = [json.loads(row[2]) if isinstance(row[2], str) else row[2] for row in rows]
 
-    #convert to torch tensors
     allVecs = torch.tensor(vecs)
 
-    #selecting first 10 sentences to compare with all embeddings
+    # seleccionamos las primeras 10
     selectedIds = ids[:10]
     selectedTexts = texts[:10]
     selectedVecs = allVecs[:10]
 
-    cosineTimes=[]
-    euclideanTimes=[]
+    cosineTimes = []
+    euclideanTimes = []
 
-    for qid, qvec in zip(selectedIds, selectedVecs):
-        # cosine
+    for qid, qtext, qvec in zip(selectedIds, selectedTexts, selectedVecs):
+        # Cosine
         startTime = time.perf_counter()
         cosineScores = torch.matmul(allVecs, qvec)
         topVals, topIdxs = torch.topk(cosineScores, k=3)
         endTime = time.perf_counter()
         cosineTimes.append(endTime - startTime)
 
-        # euclidean
+        # Euclidean
         startTime = time.perf_counter()
         eucDist = torch.norm(allVecs - qvec, dim=1)
-        topVals, topIdxs = torch.topk(-eucDist, k=3)
+        topValsE, topIdxsE = torch.topk(-eucDist, k=3)
         endTime = time.perf_counter()
         euclideanTimes.append(endTime - startTime)
 
-    #cosine results
-    mn = min(cosineTimes)*1000
-    mx = max(cosineTimes)*1000
-    mean = statistics.mean(cosineTimes)*1000
-    standardDeviation = statistics.pstdev(cosineTimes)*1000 if len(cosineTimes) > 1 else 0.0
-    
-    print("\nCosine query times (ms)")
-    print(f"Min: {mn:.3f} ms")
-    print(f"Max: {mx:.3f} ms")
-    print(f"Average: {mean:.3f} ms")
-    print(f"Standard Deviation: {standardDeviation:.3f} ms")
+        # Mostrar resultados (excluyendo la query misma)
+        print(f"\nQuery: {qtext[:50]}...")
+        print("Cosine top2:", [(ids[i], texts[i][:80]) for i in topIdxs if ids[i] != qid][:2])
+        print("Euclidean top2:", [texts[i][:80] for i in topIdxsE if ids[i] != qid][:2])
 
-    #Euclidean results 
-    mn = min(euclideanTimes)*1000
-    mx = max(euclideanTimes)*1000
-    mean = statistics.mean(euclideanTimes)*1000
-    standardDeviation = statistics.pstdev(euclideanTimes)*1000 if len(euclideanTimes) > 1 else 0.0
-    
+    # Métricas Cosine
+    print("\nCosine query times (ms)")
+    print_stats(cosineTimes)
+
+    # Métricas Euclidean
     print("\nEuclidean query times (ms)")
+    print_stats(euclideanTimes)
+
+def print_stats(times):
+    mn = min(times) * 1000
+    mx = max(times) * 1000
+    mean = statistics.mean(times) * 1000
+    std = statistics.pstdev(times) * 1000 if len(times) > 1 else 0.0
     print(f"Min: {mn:.3f} ms")
     print(f"Max: {mx:.3f} ms")
     print(f"Average: {mean:.3f} ms")
-    print(f"Standard Deviation: {standardDeviation:.3f} ms")
+    print(f"Standard Deviation: {std:.3f} ms")
 
 if __name__ == '__main__':
     main()
