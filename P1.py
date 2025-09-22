@@ -4,7 +4,7 @@ from psycopg2.extras import execute_values
 from sentence_transformers import SentenceTransformer
 
 MODEL_NAME = 'sentence-transformers/all-MiniLM-L6-v2'
-CSV_PATH = "bookcorpusChunks.csv"
+CSV_PATH = "bookcorpus10k.csv"
 BATCH_SIZE = 256
 DB_BATCH_SIZE = 200
 
